@@ -11,15 +11,17 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LightningEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.attribute.EntityAttributeInstance;
+import net.minecraft.entity.attribute.EntityAttributes;
+import net.minecraft.entity.decoration.ArmorStandEntity;
+import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.passive.TameableEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.mob.EvokerFangsEntity;
-import net.minecraft.entity.passive.IronGolemEntity;
-import net.minecraft.entity.projectile.ArrowEntity;
-import net.minecraft.entity.projectile.PersistentProjectileEntity;
 import net.minecraft.item.Item;
 import net.minecraft.particle.ParticleEffect;
 import net.minecraft.registry.RegistryKey;
@@ -29,7 +31,6 @@ import net.minecraft.entity.attribute.EntityAttributeModifier;
 import net.minecraft.entity.effect.StatusEffect;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.mob.Monster;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.network.packet.s2c.play.SubtitleS2CPacket;
 import net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket;
@@ -42,6 +43,7 @@ import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
@@ -54,6 +56,7 @@ public final class RaceManager {
     private static final Map<UUID, Long> counterUntil = new HashMap<>();
     private static final Map<UUID, Checkpoint> checkpoints = new HashMap<>();
     private static boolean reflecting = false;
+    private static final Identifier TITAN_ID = Identifier.of("racas", "scale_titan");
 
     private record Checkpoint(RegistryKey<World> world, Vec3d pos) {}
 
@@ -140,6 +143,8 @@ public final class RaceManager {
             inst.removeModifier(a.id("r"));
             inst.removeModifier(a.id("m"));
         }
+        EntityAttributeInstance sc = p.getAttributeInstance(EntityAttributes.GENERIC_SCALE);
+        if (sc != null) sc.removeModifier(TITAN_ID); // some a forma de titã
         Race r = raceOf(p);
         if (r == null) return;
         addMods(p, r, "r");
@@ -337,15 +342,21 @@ public final class RaceManager {
             return;
         }
         cd.put(a, now + a.cooldownSeconds * 20L);
-        run(p, a);
+        if (!run(p, a)) {
+            cd.remove(a); // errou o alvo: não gasta a recarga
+            p.sendMessage(Text.literal(a.title + ": nenhum alvo!").formatted(Formatting.GRAY), true);
+            return;
+        }
         p.sendMessage(Text.literal(a.title + "!").formatted(Formatting.GOLD), true);
     }
 
-    private static void run(ServerPlayerEntity p, Ability a) {
+    /** Executa a habilidade. Retorna false se não havia alvo (a recarga não é gasta). */
+    private static boolean run(ServerPlayerEntity p, Ability a) {
         ServerWorld w = p.getServerWorld();
         Vec3d look = p.getRotationVec(1f);
 
         switch (a) {
+            // ================================================== habilidades gerais
             case TELEPORT -> {
                 HitResult h = p.raycast(16, 1f, false);
                 Vec3d t = h.getPos();
@@ -395,20 +406,9 @@ public final class RaceManager {
                 sound(w, p, SoundEvents.ENTITY_BLAZE_SHOOT, 1f);
             }
             case SHOCK -> {
-                Vec3d pos = null;
-                LivingEntity best = null;
-                double bestDist = 1e9;
-                for (LivingEntity e : targets(p, 32)) {
-                    double d = e.squaredDistanceTo(p);
-                    if (inCone(p, e, 0.97) && d < bestDist) { best = e; bestDist = d; }
-                }
-                if (best != null) pos = best.getPos();
-                else pos = p.raycast(40, 1f, false).getPos();
-                LightningEntity bolt = EntityType.LIGHTNING_BOLT.create(w);
-                if (bolt != null) {
-                    bolt.refreshPositionAfterTeleport(pos.x, pos.y, pos.z);
-                    w.spawnEntity(bolt);
-                }
+                LivingEntity best = nearestInCone(p, 32, 0.97);
+                Vec3d pos = best != null ? best.getPos() : p.raycast(40, 1f, false).getPos();
+                bolt(w, pos);
             }
             case FREEZE -> {
                 for (LivingEntity e : targets(p, 6)) {
@@ -422,11 +422,7 @@ public final class RaceManager {
             case HEAL -> {
                 p.heal(8f);
                 p.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, 100, 1));
-                for (ServerPlayerEntity o : w.getPlayers(o -> o != p && o.squaredDistanceTo(p) <= 64)) {
-                    o.heal(6f);
-                    w.spawnParticles(ParticleTypes.HEART, o.getX(), o.getY() + 1.5, o.getZ(), 8, 0.3, 0.3, 0.3, 0.02);
-                }
-                w.spawnParticles(ParticleTypes.HEART, p.getX(), p.getY() + 1.5, p.getZ(), 10, 0.4, 0.4, 0.4, 0.02);
-                sound(w, p, SoundEvents.ENTITY_PLAYER_LEVELUP, 1f);
-            }
-            
+                for (ServerPlayerEntity other : w.getPlayers(x -> x != p && x.squaredDistanceTo(p) <= 64)) {
+                    other.heal(6f);
+                    w.spawnParticles(ParticleTypes.HEART, other.getX(), other.getY() + 1.5, other.getZ(), 8, 0.3, 0.3, 0.3, 0.02);
+           
