@@ -1,428 +1,227 @@
 package com.racasmod.race;
 
-import com.racasmod.net.Payloads;
-import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.LightningEntity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.attribute.EntityAttributeInstance;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.decoration.ArmorStandEntity;
-import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.passive.TameableEntity;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.mob.EvokerFangsEntity;
-import net.minecraft.item.Item;
-import net.minecraft.particle.ParticleEffect;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.registry.tag.DamageTypeTags;
-import net.minecraft.entity.attribute.EntityAttributeModifier;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.network.packet.s2c.play.SubtitleS2CPacket;
-import net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket;
-import net.minecraft.network.packet.s2c.play.TitleS2CPacket;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
+import static com.racasmod.race.Ability.*;
+import static com.racasmod.race.When.*;
+import static net.minecraft.entity.effect.StatusEffects.*;
 
-/** Toda a lógica de jogo das raças (servidor). */
-public final class RaceManager {
-    private static final Map<UUID, Map<Ability, Long>> cooldowns = new HashMap<>();
-    private static final Map<UUID, Integer> selected = new HashMap<>();
-    private static final Map<UUID, Long> counterUntil = new HashMap<>();
-    private static final Map<UUID, Checkpoint> checkpoints = new HashMap<>();
-    private static boolean reflecting = false;
-    private static final Identifier TITAN_ID = Identifier.of("racas", "scale_titan");
+import com.racasmod.ModItems;
+import java.util.function.Consumer;
+import net.minecraft.item.Items;
 
-    private record Checkpoint(RegistryKey<World> world, Vec3d pos) {}
+/**
+ * Pacote 3: 19 personagens de anime (todos OP, cada um com uma fraqueza).
+ * hp: +2 = 1 coração | speed/jump: 0.2 = +20% | fx(QUANDO, EFEITO, nível-1)
+ * Registradas por Races.ensure().
+ */
+final class AnimeRaces {
+    static void register(Consumer<Race> add) {
 
-    /** Tarefa agendada para alguns ticks no futuro (golpes em sequência, domínio etc.). */
-    private static final class Task {
-        int left;
-        final Runnable run;
-        Task(int left, Runnable run) { this.left = left; this.run = run; }
-    }
-    private static final List<Task> tasks = new ArrayList<>();
-    private static final Map<UUID, Long> reviveCooldowns = new HashMap<>();
-    private static final Set<UUID> allowChange = new HashSet<>();
+        // ---------- Chainsaw Man
+        add.accept(Race.of("kobeni", "Kobeni", ModItems.KOBENI_KNIFE, 0xE57373,
+                "Tremendo de medo e pedindo desculpa o tempo todo... e nunca perdeu uma luta. Será que o pânico é só fingimento?")
+                .hp(-4).scale(-0.1).speed(0.2).jump(0.2).step(0.5).luck(3).dmg(2).dodge(0.35f).hunger(0.3f)
+                .fx(LOW_HP, SPEED, 2).fx(LOW_HP, STRENGTH, 1)
+                .ability(DESPERATE_STAB).also(PANIC_RUN).give(ModItems.KOBENI_KNIFE)
+                .perk("Assassina de elite disfarçada de garota assustada: +2 de dano")
+                .perk("Facada Desesperada (R): dano alto no ponto fatal, 20% de chance de matar na hora")
+                .perk("Ágil como um macaco: +20% de velocidade e salto, sobe blocos")
+                .perk("35% de chance de desviar de qualquer dano")
+                .perk("Encurralada (pouca vida): Velocidade III e Força II")
+                .perk("Começa com a Faca da Kobeni")
+                .flaw("-2 corações (corpo pequeno)")
+                .flaw("Gulosa: fome mais rápida"));
 
-    // ------------------------------------------------------------ consultas
-    public static Race raceOf(ServerPlayerEntity p) {
-        String id = RaceState.get(p.server).races.get(p.getUuid());
-        return id == null ? null : Races.get(id);
-    }
+        // ---------- Death Note
+        add.accept(Race.of("light", "Light Yagami", Items.WRITABLE_BOOK, 0x7B1FA2,
+                "Eu sou a justiça. Escreva o nome, encare o rosto, e ele morre.")
+                .hp(-4).dmg(-1).luck(2)
+                .ability(DEATH_NOTE)
+                .perk("Death Note (R): o alvo que você encara morre de ataque cardíaco em 40 segundos")
+                .perk("Sorte +2 (gênio)")
+                .flaw("-2 corações e -1 de dano: sem o caderno, é só um estudante"));
 
-    public static Race mimicOf(ServerPlayerEntity p, Race r) {
-        if (r == null || !r.mimic) return null;
-        String id = RaceState.get(p.server).mimics.get(p.getUuid());
-        return id == null ? null : Mimics.get(id);
-    }
+        // ---------- Tensei Slime
+        add.accept(Race.of("rimuru", "Rimuru Tempest", Items.SLIME_BALL, 0x4FC3F7,
+                "O slime que virou Rei Demônio. Devora, copia e regenera de tudo.")
+                .hp(10).speed(0.1).armor(4).fall(-1).dmg(-1).lifesteal(0.1f).hunger(0.2f)
+                .fx(ALWAYS, REGENERATION, 0).fx(ALWAYS, WATER_BREATHING, 0).fx(IN_WATER, DOLPHINS_GRACE, 0)
+                .revive(6000, 10f)
+                .ability(PREDATOR).also(WATER_BLADE, STICKY_THREAD, BLACK_LIGHTNING, HELL_FLARE, GRAVITY_COLLAPSE, BEELZEBUTH)
+                .perk("7 habilidades: Predador, Lâmina d'Água, Fio Pegajoso, Relâmpago Negro, Chama do Inferno, Colapso Gravitacional e Beelzebuth")
+                .perk("Agache + R troca de habilidade")
+                .perk("+5 corações, regeneração, sem dano de queda, rouba 10% de vida")
+                .perk("Volta da morte uma vez a cada 5 minutos")
+                .flaw("-1 de dano (corpo de slime)")
+                .flaw("Fome mais rápida (o Predador devora tudo)"));
 
-    public static void allowChange(UUID id) { allowChange.add(id); }
+        // ---------- Re:Zero
+        add.accept(Race.of("shaula", "Shaula", Items.SPECTRAL_ARROW, 0xFF7043,
+                "Bruxa-fera aprendiz do Sábio. Guardiã da Torre há 400 anos.")
+                .hp(6).dmg(3).step(0.5).speed(0.05).hunger(0.3f)
+                .ability(HELLS_SNIPE).also(INFINITE_SNIPE)
+                .perk("Força descomunal: +3 de dano (levanta até um dragão-da-terra com carruagem)")
+                .perk("Corpo de bruxa-fera: sobe blocos com facilidade")
+                .perk("Hell's Snipe (R): agulha de luz quente ligada ao alvo por mana")
+                .perk("Infinite Hell's Snipe: centenas de agulhas num raio enorme")
+                .flaw("Gasta fome (mana)"));
 
-    // ------------------------------------------------------------ escolha
-    public static void choose(ServerPlayerEntity p, String id) {
-        Race r = Races.get(id);
-        if (r == null) return;
-        RaceState st = RaceState.get(p.server);
-        boolean has = st.races.containsKey(p.getUuid());
-        if (has && !allowChange.remove(p.getUuid())) {
-            p.sendMessage(Text.literal("Você já escolheu sua raça!").formatted(Formatting.RED), true);
-            return;
-        }
-        set(p, r);
-    }
+        add.accept(Race.of("subaru", "Natsuki Subaru", Items.CLOCK, 0x1E88E5,
+                "Morreu? Volta. Aprende. Tenta de novo.")
+                .hp(-2).luck(1).fx(LOW_HP, WEAKNESS, 0)
+                .revive(3000, 10f).checkpoint()
+                .ability(MAO_INVISIVEL)
+                .perk("Retorno pela Morte: ao morrer, volta ao último ponto salvo (salva a cada 20s)")
+                .perk("Mão Invisível (R): esmaga todos ao redor")
+                .flaw("-1 coração")
+                .flaw("Com pouca vida: Fraqueza"));
 
-    public static void set(ServerPlayerEntity p, Race r) {
-        RaceState st = RaceState.get(p.server);
-        st.races.put(p.getUuid(), r.id);
-        if (!r.mimic) st.mimics.remove(p.getUuid());
-        st.markDirty();
-        cooldowns.remove(p.getUuid());
-        selected.remove(p.getUuid());
-        applyAttributes(p);
-        giveStarterItem(p);
-        p.setHealth(p.getMaxHealth());
-        p.getHungerManager().setFoodLevel(20);
+        // ---------- Attack on Titan
+        add.accept(Race.of("eren", "Eren Yeager", Items.NETHERITE_SWORD, 0x558B2F,
+                "Humano e Titã. Continue avançando.")
+                .hp(4).dmg(1).speed(0.05).kb(0.2).hunger(0.25f)
+                .fx(LOW_HP, STRENGTH, 1)
+                .ability(TITAN_FORM).also(RUMBLING)
+                .perk("Titã (R): morde a mão (perde 2 corações) e fica gigante por 30s, com Força V, Resistência III e absorção")
+                .perk("Rumbling: marcha dos titãs devasta uma área enorme")
+                .perk("Agache + R troca entre Titã e Rumbling")
+                .perk("Forma humana: com pouca vida ganha Força II")
+                .flaw("Fome mais rápida (titã devora)"));
 
-        p.networkHandler.sendPacket(new TitleFadeS2CPacket(10, 70, 20));
-        p.networkHandler.sendPacket(new SubtitleS2CPacket(Text.literal(r.desc).formatted(Formatting.GRAY)));
-        p.networkHandler.sendPacket(new TitleS2CPacket(
-                Text.literal(r.name).styled(s -> s.withColor(r.color).withBold(true))));
-        p.server.getPlayerManager().broadcast(
-                Text.literal(p.getName().getString() + " agora é ")
-                        .append(Text.literal(r.name).styled(s -> s.withColor(r.color).withBold(true))), false);
-        p.getServerWorld().playSound(null, p.getBlockPos(), SoundEvents.ENTITY_PLAYER_LEVELUP, SoundCategory.PLAYERS, 1f, 1f);
+        // ---------- Dragon Ball
+        add.accept(Race.of("goku", "Goku", Items.BLAZE_POWDER, 0xFF9800,
+                "Guerreiro Saiyajin. Cada luta o deixa mais forte.")
+                .hp(6).dmg(2).speed(0.1).hunger(0.6f)
+                .fx(LOW_HP, STRENGTH, 1)
+                .ability(KAMEHAMEHA).also(SUPER_SAIYAJIN)
+                .perk("Kamehameha (R): raio devastador de 30 blocos")
+                .perk("Super Saiyajin: Força IV, Velocidade III e Resistência II por 30s")
+                .perk("Zenkai: com pouca vida ganha Força II")
+                .flaw("Fome gigantesca (Saiyajin come muito)"));
 
-        if (r.mimic) ServerPlayNetworking.send(p, new Payloads.OpenMenuPayload(1));
-    }
+        // ---------- One Punch Man
+        add.accept(Race.of("saitama", "Saitama", Items.EGG, 0xFFEB3B,
+                "Treino: 100 flexões, 100 abdominais, 100 agachamentos e 10 km. Todo dia.")
+                .hp(6).dmg(6).jump(0.1).hunger(0.4f)
+                .ability(SERIOUS_PUNCH)
+                .perk("+6 de dano em todo golpe")
+                .perk("Soco Sério (R): um soco que obliterará tudo à frente")
+                .flaw("Fome mais rápida (precisa de mercado em promoção)"));
 
-    public static void chooseMimic(ServerPlayerEntity p, String id) {
-        Race r = raceOf(p);
-        Race m = Mimics.get(id);
-        if (r == null || !r.mimic || m == null || m.mimic) return;
-        RaceState st = RaceState.get(p.server);
-        st.mimics.put(p.getUuid(), m.id);
-        st.markDirty();
-        applyAttributes(p);
-        p.sendMessage(Text.literal("Você copiou o poder de: ")
-                .append(Text.literal(m.name).styled(s -> s.withColor(m.color).withBold(true))), true);
-        p.getServerWorld().playSound(null, p.getBlockPos(), SoundEvents.ENTITY_ENDERMAN_TELEPORT, SoundCategory.PLAYERS, 1f, 0.6f);
-        p.getServerWorld().spawnParticles(ParticleTypes.SOUL_FIRE_FLAME, p.getX(), p.getY() + 1, p.getZ(), 40, 0.4, 0.8, 0.4, 0.05);
-    }
+        // ---------- Jujutsu Kaisen
+        add.accept(Race.of("sukuna", "Ryomen Sukuna", Items.WITHER_SKELETON_SKULL, 0xB71C1C,
+                "O Rei das Maldições. Corta tudo, inclusive o que não deveria.")
+                .hp(4).dmg(3).speed(0.1).lifesteal(0.1f).hunger(0.3f)
+                .ability(DISMANTLE).also(CLEAVE, MALEVOLENT_SHRINE)
+                .perk("Desmantelar: cortes invisíveis em linha reta (4s)")
+                .perk("Clivar: corte que se ajusta à vida do alvo")
+                .perk("Santuário Malevolente: cortes sem parar numa área enorme")
+                .perk("Rouba 10% do dano em vida")
+                .flaw("Gasta fome (energia amaldiçoada)"));
 
-    // ------------------------------------------------------------ atributos
-    public static void applyAttributes(ServerPlayerEntity p) {
-        for (Attr a : Attr.values()) {
-            EntityAttributeInstance inst = p.getAttributeInstance(a.entry);
-            if (inst == null) continue;
-            inst.removeModifier(a.id("r"));
-            inst.removeModifier(a.id("m"));
-        }
-        EntityAttributeInstance sc = p.getAttributeInstance(EntityAttributes.GENERIC_SCALE);
-        if (sc != null) sc.removeModifier(TITAN_ID); // some a forma de titã
-        Race r = raceOf(p);
-        if (r == null) return;
-        addMods(p, r, "r");
-        Race m = mimicOf(p, r);
-        if (m != null) addMods(p, m, "m");
-        if (p.getHealth() > p.getMaxHealth()) p.setHealth(p.getMaxHealth());
-    }
+        // ---------- Eminence in Shadow
+        add.accept(Race.of("cid", "Cid Kagenou", Items.AMETHYST_SHARD, 0x311B92,
+                "Nas sombras, tudo é possível. I AM ATOMIC.")
+                .hp(2).dmg(1).fx(NIGHT, STRENGTH, 1).fx(NIGHT, SPEED, 1).fx(DAY, WEAKNESS, 0)
+                .ability(ATOMIC).also(VANISH)
+                .perk("À noite: Força II e Velocidade II")
+                .perk("I AM ATOMIC (R): explosão atômica gigante ao redor")
+                .perk("Sumiço: invisível e rápido por 8s")
+                .flaw("De dia: Fraqueza (fingindo ser um NPC)"));
 
-    private static void addMods(ServerPlayerEntity p, Race r, String src) {
-        for (Race.AttrMod mod : r.attrs) {
-            EntityAttributeInstance inst = p.getAttributeInstance(mod.attr().entry);
-            if (inst == null) continue;
-            inst.addTemporaryModifier(new EntityAttributeModifier(mod.attr().id(src), mod.value(), mod.attr().op));
-        }
-    }
+        // ---------- Maou Gakuin
+        add.accept(Race.of("anos", "Anos Voldigoad", Items.DRAGON_EGG, 0x6A1B9A,
+                "O Rei Demônio Tirano. Destrói o que encara.")
+                .hp(10).armor(4).hunger(0.3f)
+                .ability(DESTRUCTION_EYE).also(BARRIER)
+                .perk("Olho da Destruição (R): destrói quem você encarar")
+                .perk("Barreira: Resistência e Absorção por 6s")
+                .perk("+5 corações e +4 de armadura")
+                .flaw("Magia gasta fome"));
 
-    // ------------------------------------------------------------ tick
-    public static void tick(ServerPlayerEntity p, int serverTicks) {
-        if (serverTicks % 10 != 0 || !p.isAlive() || p.isSpectator()) return;
-        Race r = raceOf(p);
-        if (r == null) return;
-        Race m = mimicOf(p, r);
-        When.Ctx c = When.Ctx.of(p);
+        // ---------- Overlord
+        add.accept(Race.of("ainz", "Ainz Ooal Gown", Items.SKELETON_SKULL, 0x4A148C,
+                "O Soberano Supremo. A morte é apenas o começo.")
+                .hp(4).armor(6).dmg(-2).fx(ALWAYS, NIGHT_VISION, 0)
+                .ability(GRASP_HEART).also(BARRIER)
+                .perk("Agarrar Coração (R): mata na hora tudo que for fraco por perto")
+                .perk("Barreira: Resistência e Absorção por 6s")
+                .perk("+6 de armadura (imune a ataques fracos) e visão no escuro")
+                .flaw("Mago: -2 de dano corpo a corpo"));
 
-        if ((r.checkpoint || (m != null && m.checkpoint)) && serverTicks % 400 == 0
-                && p.isOnGround() && !p.isOnFire() && p.getHealth() >= p.getMaxHealth() * 0.6f) {
-            checkpoints.put(p.getUuid(), new Checkpoint(p.getServerWorld().getRegistryKey(), p.getPos()));
-        }
+        // ---------- SAO
+        add.accept(Race.of("kirito", "Kirito", Items.IRON_SWORD, 0x212121,
+                "O Espadachim Negro. Duas lâminas, zero pausa.")
+                .hp(-4).dmg(2).speed(0.2)
+                .ability(STARBURST).also(DASH)
+                .perk("Starburst Stream (R): combo de 16 golpes ultrarrápidos")
+                .perk("Dash para entrar na luta")
+                .perk("+2 de dano e 20% mais rápido")
+                .flaw("-2 corações"));
 
-        applyFx(p, r, c);
-        if (m != null) applyFx(p, m, c);
+        // ---------- Nanatsu no Taizai
+        add.accept(Race.of("escanor", "Escanor", Items.SUNFLOWER, 0xFFA000,
+                "O Leão do Orgulho. Ao meio-dia, ninguém o supera.")
+                .hp(6).fx(DAY, STRENGTH, 3).fx(DAY, RESISTANCE, 1).fx(NIGHT, WEAKNESS, 1).fx(NIGHT, SLOWNESS, 0)
+                .ability(CRUEL_SUN).also(DIVINE_AXE)
+                .perk("De dia: Força IV e Resistência II")
+                .perk("Cruel Sun (R): bola de sol que calcina tudo")
+                .perk("Machado Divino Rhitta: corte colossal à frente")
+                .flaw("De noite: Fraqueza II e Lentidão"));
 
-        if (serverTicks % 20 == 0 && !p.isCreative()) {
-            hurt(p, r, c);
-            if (m != null) hurt(p, m, c);
-            float hunger = r.hunger + (m != null ? m.hunger : 0f);
-            if (hunger > 0f) p.addExhaustion(hunger);
-        }
-    }
+        add.accept(Race.of("meliodas", "Meliodas", Items.FIRE_CHARGE, 0x212121,
+                "O Dragão da Ira. Tudo que você faz, volta em dobro.")
+                .hp(4).dmg(2).speed(0.1).fx(NIGHT, STRENGTH, 1).fx(DAY, WEAKNESS, 0)
+                .ability(FULL_COUNTER).also(HELLBLAZE)
+                .perk("Contra-Ataque Total (R): reflete em dobro todo dano por 4s")
+                .perk("Hellblaze: chamas negras queimam tudo ao redor")
+                .perk("À noite: Força II (poder demoníaco)")
+                .flaw("De dia: Fraqueza (poder demoníaco selado)"));
 
-    private static void applyFx(ServerPlayerEntity p, Race r, When.Ctx c) {
-        for (Race.Fx f : r.fxs) {
-            if (!f.when().test(c)) continue;
-            int dur = f.effect() == StatusEffects.NIGHT_VISION ? 260 : 50;
-            p.addStatusEffect(new StatusEffectInstance(f.effect(), dur, f.amp(), true, false, true));
-        }
-    }
+        // ---------- Hellsing
+        add.accept(Race.of("alucard", "Alucard", Items.CROSSBOW, 0xB71C1C,
+                "O vampiro supremo de Hellsing. Imune ao sol, devorador de almas.")
+                .hp(10).dmg(1).lifesteal(0.3f).hunger(0.4f).fx(ALWAYS, REGENERATION, 1)
+                .revive(4800, 10f)
+                .ability(HELLHOUNDS).also(CROMWELL)
+                .perk("Baskerville (R): o cão infernal devora os inimigos")
+                .perk("Cromwell: quebra o selo e libera o poder total por 20s")
+                .perk("Regeneração II e rouba 30% do dano em vida")
+                .perk("Imune ao sol")
+                .perk("Volta da morte a cada 4 minutos (almas absorvidas)")
+                .flaw("Sede de sangue: gasta fome"));
 
-    private static void hurt(ServerPlayerEntity p, Race r, When.Ctx c) {
-        for (Race.Hurt h : r.hurts) {
-            if (!h.when().test(c)) continue;
-            if (h.fire()) p.setOnFireFor(3);
-            else p.damage(p.getServerWorld().getDamageSources().generic(), h.amount());
-        }
-    }
+        // ---------- JoJo
+        add.accept(Race.of("dio", "DIO", Items.GOLD_INGOT, 0xFDD835,
+                "MUDA MUDA MUDA! O mundo é dele. ZA WARUDO!")
+                .hp(4).dmg(2).speed(0.1).lifesteal(0.15f).fx(NIGHT, STRENGTH, 1).burn(SUNLIT_BARE)
+                .ability(TIME_STOP).also(KNIVES, ROAD_ROLLER)
+                .perk("Parar o Tempo (R): congela todos ao redor por 5s")
+                .perk("Chuva de Facas e Road Roller!")
+                .perk("Rouba 15% do dano em vida e Força II à noite")
+                .flaw("Pega fogo sob o sol (um capacete protege)"));
 
-    // ------------------------------------------------------------ eventos de combate
-    public static void onDamageDealt(LivingEntity victim, ServerPlayerEntity attacker, float damage) {
-        Race r = raceOf(attacker);
-        if (r == null) return;
-        Race m = mimicOf(attacker, r);
-        float steal = r.lifesteal + (m != null ? m.lifesteal : 0f);
-        if (steal > 0f && damage > 0f) attacker.heal(damage * steal);
-    }
+        // ---------- Fate
+        add.accept(Race.of("gilgamesh", "Gilgamesh", Items.GOLDEN_SWORD, 0xFFD600,
+                "O Rei dos Heróis. O tesouro do mundo é dele.")
+                .hp(4).armor(4).luck(5).dmg(-1).speed(-0.05)
+                .ability(GATE_OF_BABYLON).also(ENKIDU, ENUMA_ELISH)
+                .perk("Portão da Babilônia (R): chuva de armas douradas")
+                .perk("Enkidu: correntes prendem todos por perto")
+                .perk("Enuma Elish: a espada que rasga o mundo")
+                .perk("Sorte +5 e +4 de armadura")
+                .flaw("-1 de dano e 5% mais lento (orgulhoso demais para correr)"));
 
-    /** Volta da morte (Fênix, Subaru, Alucard, Kobeni...). Retorna true se reviveu. */
-    public static boolean tryRevive(ServerPlayerEntity p) {
-        Race r = raceOf(p);
-        if (r == null) return false;
-        Race m = mimicOf(p, r);
-        Race src = r.revive ? r : (m != null && m.revive ? m : null);
-        if (src == null) return false;
-        ServerWorld w = p.getServerWorld();
-        long now = w.getTime();
-        Long ready = reviveCooldowns.get(p.getUuid());
-        if (ready != null && ready > now) return false;
-        reviveCooldowns.put(p.getUuid(), now + src.reviveTicks);
-        p.setHealth(Math.min(src.reviveHealth, p.getMaxHealth()));
-        p.extinguish();
-        p.fallDistance = 0;
-        p.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, 100, 1));
-        p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 100, 2));
-        p.addStatusEffect(new StatusEffectInstance(StatusEffects.FIRE_RESISTANCE, 200, 0));
-        String msg = "Você renasceu das cinzas!";
-        if (src.checkpoint) {
-            Checkpoint cp = checkpoints.get(p.getUuid());
-            if (cp != null && cp.world().equals(w.getRegistryKey())) {
-                p.requestTeleport(cp.pos().x, cp.pos().y, cp.pos().z);
-            }
-            msg = "Retorno pela Morte!";
-        }
-        w.spawnParticles(ParticleTypes.FLAME, p.getX(), p.getY() + 1, p.getZ(), 80, 0.6, 1.0, 0.6, 0.1);
-        w.playSound(null, p.getBlockPos(), SoundEvents.ITEM_TOTEM_USE, SoundCategory.PLAYERS, 1f, 1f);
-        p.sendMessage(Text.literal(msg).formatted(Formatting.GOLD), true);
-        return true;
+        // ---------- Berserk
+        add.accept(Race.of("guts", "Guts", Items.IRON_AXE, 0x424242,
+                "O Espadachim Negro. Uma espada grande demais para ser espada.")
+                .hp(6).dmg(3).armor(2).kb(0.5).speed(-0.05)
+                .ability(DRAGON_SLAYER).also(BERSERKER_ARMOR, ARM_CANNON)
+                .perk("Mata-Dragão (R): golpe absurdo num só alvo")
+                .perk("Armadura Berserker: Força III e Resistência III por 20s, mas custa 2,5 corações")
+                .perk("Canhão do Braço: disparo explosivo à frente")
+                .perk("+3 de dano e resistência a empurrão")
+                .flaw("5% mais lento (a espada pesa)"));
     }
 
-    /** Dano recebido: Contra-Ataque Total (Meliodas) e esquiva (Kobeni). Retorna false para cancelar o dano. */
-    public static boolean allowDamage(LivingEntity entity, DamageSource source, float amount) {
-        if (reflecting || !(entity instanceof ServerPlayerEntity p)) return true;
-        if (source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY)) return true;
-        Race r = raceOf(p);
-        if (r == null) return true;
-        Race m = mimicOf(p, r);
-        ServerWorld w = p.getServerWorld();
-
-        Long until = counterUntil.get(p.getUuid());
-        if (until != null && until > w.getTime() && source.getAttacker() instanceof LivingEntity att && att != p) {
-            reflecting = true;
-            try {
-                att.damage(w.getDamageSources().playerAttack(p), Math.max(amount, 1f) * 2f);
-            } finally {
-                reflecting = false;
-            }
-            w.spawnParticles(ParticleTypes.CRIT, p.getX(), p.getY() + 1, p.getZ(), 25, 0.5, 0.8, 0.5, 0.2);
-            return false;
-        }
-
-        float dodge = r.dodge + (m != null ? m.dodge : 0f);
-        if (dodge > 0f && p.getRandom().nextFloat() < dodge) {
-            w.spawnParticles(ParticleTypes.CLOUD, p.getX(), p.getY() + 1, p.getZ(), 12, 0.4, 0.6, 0.4, 0.05);
-            p.sendMessage(Text.literal("Desviou!").formatted(Formatting.LIGHT_PURPLE), true);
-            return false;
-        }
-        return true;
-    }
-
-    /** Executa as tarefas agendadas (chamado todo tick do servidor). */
-    public static void runTasks() {
-        if (tasks.isEmpty()) return;
-        List<Runnable> ready = new ArrayList<>();
-        Iterator<Task> it = tasks.iterator();
-        while (it.hasNext()) {
-            Task t = it.next();
-            if (--t.left <= 0) {
-                ready.add(t.run);
-                it.remove();
-            }
-        }
-        for (Runnable r : ready) {
-            try { r.run(); } catch (RuntimeException ignored) { }
-        }
-    }
-
-    private static void later(int ticks, Runnable r) {
-        tasks.add(new Task(Math.max(1, ticks), r));
-    }
-
-    /** Entrega o item inicial da raça (ex.: a faca da Kobeni) se o jogador ainda não tiver. */
-    public static void giveStarterItem(ServerPlayerEntity p) {
-        Race r = raceOf(p);
-        if (r == null || r.giveItem == null) return;
-        Item item = r.giveItem;
-        for (int i = 0; i < p.getInventory().size(); i++) {
-            if (p.getInventory().getStack(i).isOf(item)) return;
-        }
-        p.giveItemStack(new net.minecraft.item.ItemStack(item));
-    }
-
-    // ------------------------------------------------------------ habilidades
-    public static void action(ServerPlayerEntity p, int action) {
-        Race r = raceOf(p);
-        if (r == null) return;
-        if (action == 1) {
-            if (r.mimic) ServerPlayNetworking.send(p, new Payloads.OpenMenuPayload(1));
-            else p.sendMessage(Text.literal("Só o Herobrine copia poderes!").formatted(Formatting.RED), true);
-            return;
-        }
-        useAbility(p, r);
-    }
-
-    private static void useAbility(ServerPlayerEntity p, Race r) {
-        Race m = mimicOf(p, r);
-        List<Ability> list = (m != null && m.ability != Ability.NONE) ? m.abilities() : r.abilities();
-        if (list.isEmpty()) {
-            p.sendMessage(Text.literal("Sua raça não tem habilidade ativa.").formatted(Formatting.GRAY), true);
-            return;
-        }
-        // Agachado + R: troca a habilidade selecionada
-        if (p.isSneaking() && list.size() > 1) {
-            int next = (selected.getOrDefault(p.getUuid(), 0) + 1) % list.size();
-            selected.put(p.getUuid(), next);
-            Ability n = list.get(next);
-            p.sendMessage(Text.literal("Habilidade: " + n.title + " (" + n.cooldownSeconds + "s)")
-                    .formatted(Formatting.AQUA), true);
-            return;
-        }
-        Ability a = list.get(Math.min(selected.getOrDefault(p.getUuid(), 0), list.size() - 1));
-        long now = p.getServerWorld().getTime();
-        Map<Ability, Long> cd = cooldowns.computeIfAbsent(p.getUuid(), k -> new EnumMap<>(Ability.class));
-        Long ready = cd.get(a);
-        if (ready != null && ready > now) {
-            long left = (ready - now + 19) / 20;
-            p.sendMessage(Text.literal(a.title + ": recarregando... " + left + "s").formatted(Formatting.RED), true);
-            return;
-        }
-        cd.put(a, now + a.cooldownSeconds * 20L);
-        if (!run(p, a)) {
-            cd.remove(a); // errou o alvo: não gasta a recarga
-            p.sendMessage(Text.literal(a.title + ": nenhum alvo!").formatted(Formatting.GRAY), true);
-            return;
-        }
-        p.sendMessage(Text.literal(a.title + "!").formatted(Formatting.GOLD), true);
-    }
-
-    /** Executa a habilidade. Retorna false se não havia alvo (a recarga não é gasta). */
-    private static boolean run(ServerPlayerEntity p, Ability a) {
-        ServerWorld w = p.getServerWorld();
-        Vec3d look = p.getRotationVec(1f);
-
-        switch (a) {
-            // ================================================== habilidades gerais
-            case TELEPORT -> {
-                HitResult h = p.raycast(16, 1f, false);
-                Vec3d t = h.getPos();
-                if (h.getType() == HitResult.Type.BLOCK) t = t.subtract(look.multiply(0.7));
-                double fy = t.y - 1.6;
-                for (int dy = 0; dy <= 4; dy++) {
-                    Box moved = p.getBoundingBox().offset(t.x - p.getX(), fy + dy - p.getY(), t.z - p.getZ());
-                    if (w.isSpaceEmpty(p, moved)) {
-                        poof(w, p.getPos());
-                        p.requestTeleport(t.x, fy + dy, t.z);
-                        poof(w, p.getPos());
-                        sound(w, p, SoundEvents.ENTITY_ENDERMAN_TELEPORT, 1f);
-                        break;
-                    }
-                }
-            }
-            case DASH -> {
-                p.setVelocity(look.x * 1.7, 0.25, look.z * 1.7);
-                p.velocityModified = true;
-                p.fallDistance = 0;
-                w.spawnParticles(ParticleTypes.CLOUD, p.getX(), p.getY() + 0.5, p.getZ(), 20, 0.3, 0.3, 0.3, 0.05);
-                sound(w, p, SoundEvents.ENTITY_BAT_TAKEOFF, 1f);
-            }
-            case LEAP -> {
-                Vec3d v = p.getVelocity();
-                p.setVelocity(v.x + look.x * 0.4, 1.1, v.z + look.z * 0.4);
-                p.velocityModified = true;
-                p.fallDistance = 0;
-                p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 60, 4, true, false, false));
-                sound(w, p, SoundEvents.ENTITY_SLIME_JUMP, 1f);
-            }
-            case EXPLODE -> {
-                p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 20, 4, true, false, false));
-                w.createExplosion(p, p.getX(), p.getY(), p.getZ(), 3.0f, World.ExplosionSourceType.NONE);
-            }
-            case FIRE_BREATH -> {
-                for (int i = 1; i <= 8; i++) {
-                    Vec3d pt = p.getEyePos().add(look.multiply(i));
-                    w.spawnParticles(ParticleTypes.FLAME, pt.x, pt.y, pt.z, 4, 0.25, 0.25, 0.25, 0.02);
-                }
-                for (LivingEntity e : targets(p, 8)) {
-                    if (inCone(p, e, 0.7)) {
-                        e.setOnFireFor(6);
-                        e.damage(w.getDamageSources().playerAttack(p), 4f);
-                    }
-                }
-                sound(w, p, SoundEvents.ENTITY_BLAZE_SHOOT, 1f);
-            }
-            case SHOCK -> {
-                LivingEntity best = nearestInCone(p, 32, 0.97);
-                Vec3d pos = best != null ? best.getPos() : p.raycast(40, 1f, false).getPos();
-                bolt(w, pos);
-            }
-            case FREEZE -> {
-                for (LivingEntity e : targets(p, 6)) {
-                    e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 100, 3));
-                    e.addStatusEffect(new StatusEffectInstance(StatusEffects.WEAKNESS, 100, 0));
-                    w.spawnParticles(ParticleTypes.SNOWFLAKE, e.getX(), e.getY() + 1, e.getZ(), 25, 0.4, 0.6, 0.4, 0.02);
-                }
-                w.spawnParticles(ParticleTypes.SNOWFLAKE, p.getX(), p.getY() + 1, p.getZ(), 60, 3, 0.5, 3, 0.05);
-                sound(w, p, SoundEvents.BLOCK_GLASS_BREAK, 0.8f);
-            }
-            case HEAL -> {
-                p.heal(8f);
-                p.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, 100, 1));
-                for (ServerPlayerEntity other : w.getPlayers(x -> x != p && x.squaredDistanceTo(p) <= 64)) {
-                    other.heal(6f);
-                    w.spawnParticles(ParticleTypes.HEART, other.getX(), other.getY() + 1.5, other.getZ(), 8, 0.3, 0.3, 0.3, 0.02);
-           
+    private AnimeRaces() {}
+                      }
