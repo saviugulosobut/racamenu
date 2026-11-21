@@ -277,8 +277,10 @@ public final class Races {
                 .flaw("Fome mais rápida (os fãs cobram)"));
 
         MoreRaces.register(Races::add); // +20 raças (arquivo MoreRaces.java)
+        AnimeRaces.register(Races::add); // +22 raças de anime (arquivo AnimeRaces.java)
     }
 
     private Races() {}
             }
+
             
