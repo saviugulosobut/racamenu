@@ -1,8 +1,11 @@
 package com.racasmod.race;
 
 import com.racasmod.net.Payloads;
+import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -12,7 +15,18 @@ import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LightningEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.attribute.EntityAttributeInstance;
+import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.mob.EvokerFangsEntity;
+import net.minecraft.entity.passive.IronGolemEntity;
+import net.minecraft.entity.projectile.ArrowEntity;
+import net.minecraft.entity.projectile.PersistentProjectileEntity;
+import net.minecraft.item.Item;
+import net.minecraft.particle.ParticleEffect;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.registry.tag.DamageTypeTags;
 import net.minecraft.entity.attribute.EntityAttributeModifier;
+import net.minecraft.entity.effect.StatusEffect;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.mob.Monster;
@@ -35,7 +49,21 @@ import net.minecraft.world.World;
 
 /** Toda a lógica de jogo das raças (servidor). */
 public final class RaceManager {
-    private static final Map<UUID, Long> cooldowns = new HashMap<>();
+    private static final Map<UUID, Map<Ability, Long>> cooldowns = new HashMap<>();
+    private static final Map<UUID, Integer> selected = new HashMap<>();
+    private static final Map<UUID, Long> counterUntil = new HashMap<>();
+    private static final Map<UUID, Checkpoint> checkpoints = new HashMap<>();
+    private static boolean reflecting = false;
+
+    private record Checkpoint(RegistryKey<World> world, Vec3d pos) {}
+
+    /** Tarefa agendada para alguns ticks no futuro (golpes em sequência, domínio etc.). */
+    private static final class Task {
+        int left;
+        final Runnable run;
+        Task(int left, Runnable run) { this.left = left; this.run = run; }
+    }
+    private static final List<Task> tasks = new ArrayList<>();
     private static final Map<UUID, Long> reviveCooldowns = new HashMap<>();
     private static final Set<UUID> allowChange = new HashSet<>();
 
@@ -72,7 +100,9 @@ public final class RaceManager {
         if (!r.mimic) st.mimics.remove(p.getUuid());
         st.markDirty();
         cooldowns.remove(p.getUuid());
+        selected.remove(p.getUuid());
         applyAttributes(p);
+        giveStarterItem(p);
         p.setHealth(p.getMaxHealth());
         p.getHungerManager().setFoodLevel(20);
 
@@ -134,6 +164,11 @@ public final class RaceManager {
         Race m = mimicOf(p, r);
         When.Ctx c = When.Ctx.of(p);
 
+        if ((r.checkpoint || (m != null && m.checkpoint)) && serverTicks % 400 == 0
+                && p.isOnGround() && !p.isOnFire() && p.getHealth() >= p.getMaxHealth() * 0.6f) {
+            checkpoints.put(p.getUuid(), new Checkpoint(p.getServerWorld().getRegistryKey(), p.getPos()));
+        }
+
         applyFx(p, r, c);
         if (m != null) applyFx(p, m, c);
 
@@ -170,26 +205,98 @@ public final class RaceManager {
         if (steal > 0f && damage > 0f) attacker.heal(damage * steal);
     }
 
-    /** Fênix: volta da morte. Retorna true se reviveu. */
+    /** Volta da morte (Fênix, Subaru, Alucard, Kobeni...). Retorna true se reviveu. */
     public static boolean tryRevive(ServerPlayerEntity p) {
         Race r = raceOf(p);
         if (r == null) return false;
         Race m = mimicOf(p, r);
-        if (!r.revive && (m == null || !m.revive)) return false;
+        Race src = r.revive ? r : (m != null && m.revive ? m : null);
+        if (src == null) return false;
         ServerWorld w = p.getServerWorld();
         long now = w.getTime();
         Long ready = reviveCooldowns.get(p.getUuid());
         if (ready != null && ready > now) return false;
-        reviveCooldowns.put(p.getUuid(), now + 6000L);
-        p.setHealth(8f);
+        reviveCooldowns.put(p.getUuid(), now + src.reviveTicks);
+        p.setHealth(Math.min(src.reviveHealth, p.getMaxHealth()));
         p.extinguish();
+        p.fallDistance = 0;
         p.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, 100, 1));
         p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 100, 2));
         p.addStatusEffect(new StatusEffectInstance(StatusEffects.FIRE_RESISTANCE, 200, 0));
+        String msg = "Você renasceu das cinzas!";
+        if (src.checkpoint) {
+            Checkpoint cp = checkpoints.get(p.getUuid());
+            if (cp != null && cp.world().equals(w.getRegistryKey())) {
+                p.requestTeleport(cp.pos().x, cp.pos().y, cp.pos().z);
+            }
+            msg = "Retorno pela Morte!";
+        }
         w.spawnParticles(ParticleTypes.FLAME, p.getX(), p.getY() + 1, p.getZ(), 80, 0.6, 1.0, 0.6, 0.1);
         w.playSound(null, p.getBlockPos(), SoundEvents.ITEM_TOTEM_USE, SoundCategory.PLAYERS, 1f, 1f);
-        p.sendMessage(Text.literal("Você renasceu das cinzas!").formatted(Formatting.GOLD), true);
+        p.sendMessage(Text.literal(msg).formatted(Formatting.GOLD), true);
         return true;
+    }
+
+    /** Dano recebido: Contra-Ataque Total (Meliodas) e esquiva (Kobeni). Retorna false para cancelar o dano. */
+    public static boolean allowDamage(LivingEntity entity, DamageSource source, float amount) {
+        if (reflecting || !(entity instanceof ServerPlayerEntity p)) return true;
+        if (source.isIn(DamageTypeTags.BYPASSES_INVULNERABILITY)) return true;
+        Race r = raceOf(p);
+        if (r == null) return true;
+        Race m = mimicOf(p, r);
+        ServerWorld w = p.getServerWorld();
+
+        Long until = counterUntil.get(p.getUuid());
+        if (until != null && until > w.getTime() && source.getAttacker() instanceof LivingEntity att && att != p) {
+            reflecting = true;
+            try {
+                att.damage(w.getDamageSources().playerAttack(p), Math.max(amount, 1f) * 2f);
+            } finally {
+                reflecting = false;
+            }
+            w.spawnParticles(ParticleTypes.CRIT, p.getX(), p.getY() + 1, p.getZ(), 25, 0.5, 0.8, 0.5, 0.2);
+            return false;
+        }
+
+        float dodge = r.dodge + (m != null ? m.dodge : 0f);
+        if (dodge > 0f && p.getRandom().nextFloat() < dodge) {
+            w.spawnParticles(ParticleTypes.CLOUD, p.getX(), p.getY() + 1, p.getZ(), 12, 0.4, 0.6, 0.4, 0.05);
+            p.sendMessage(Text.literal("Desviou!").formatted(Formatting.LIGHT_PURPLE), true);
+            return false;
+        }
+        return true;
+    }
+
+    /** Executa as tarefas agendadas (chamado todo tick do servidor). */
+    public static void runTasks() {
+        if (tasks.isEmpty()) return;
+        List<Runnable> ready = new ArrayList<>();
+        Iterator<Task> it = tasks.iterator();
+        while (it.hasNext()) {
+            Task t = it.next();
+            if (--t.left <= 0) {
+                ready.add(t.run);
+                it.remove();
+            }
+        }
+        for (Runnable r : ready) {
+            try { r.run(); } catch (RuntimeException ignored) { }
+        }
+    }
+
+    private static void later(int ticks, Runnable r) {
+        tasks.add(new Task(Math.max(1, ticks), r));
+    }
+
+    /** Entrega o item inicial da raça (ex.: a faca da Kobeni) se o jogador ainda não tiver. */
+    public static void giveStarterItem(ServerPlayerEntity p) {
+        Race r = raceOf(p);
+        if (r == null || r.giveItem == null) return;
+        Item item = r.giveItem;
+        for (int i = 0; i < p.getInventory().size(); i++) {
+            if (p.getInventory().getStack(i).isOf(item)) return;
+        }
+        p.giveItemStack(new net.minecraft.item.ItemStack(item));
     }
 
     // ------------------------------------------------------------ habilidades
@@ -206,19 +313,30 @@ public final class RaceManager {
 
     private static void useAbility(ServerPlayerEntity p, Race r) {
         Race m = mimicOf(p, r);
-        Ability a = (m != null && m.ability != Ability.NONE) ? m.ability : r.ability;
-        if (a == Ability.NONE) {
+        List<Ability> list = (m != null && m.ability != Ability.NONE) ? m.abilities() : r.abilities();
+        if (list.isEmpty()) {
             p.sendMessage(Text.literal("Sua raça não tem habilidade ativa.").formatted(Formatting.GRAY), true);
             return;
         }
-        long now = p.getServerWorld().getTime();
-        Long ready = cooldowns.get(p.getUuid());
-        if (ready != null && ready > now) {
-            long left = (ready - now + 19) / 20;
-            p.sendMessage(Text.literal("Recarregando... " + left + "s").formatted(Formatting.RED), true);
+        // Agachado + R: troca a habilidade selecionada
+        if (p.isSneaking() && list.size() > 1) {
+            int next = (selected.getOrDefault(p.getUuid(), 0) + 1) % list.size();
+            selected.put(p.getUuid(), next);
+            Ability n = list.get(next);
+            p.sendMessage(Text.literal("Habilidade: " + n.title + " (" + n.cooldownSeconds + "s)")
+                    .formatted(Formatting.AQUA), true);
             return;
         }
-        cooldowns.put(p.getUuid(), now + a.cooldownSeconds * 20L);
+        Ability a = list.get(Math.min(selected.getOrDefault(p.getUuid(), 0), list.size() - 1));
+        long now = p.getServerWorld().getTime();
+        Map<Ability, Long> cd = cooldowns.computeIfAbsent(p.getUuid(), k -> new EnumMap<>(Ability.class));
+        Long ready = cd.get(a);
+        if (ready != null && ready > now) {
+            long left = (ready - now + 19) / 20;
+            p.sendMessage(Text.literal(a.title + ": recarregando... " + left + "s").formatted(Formatting.RED), true);
+            return;
+        }
+        cd.put(a, now + a.cooldownSeconds * 20L);
         run(p, a);
         p.sendMessage(Text.literal(a.title + "!").formatted(Formatting.GOLD), true);
     }
@@ -311,117 +429,4 @@ public final class RaceManager {
                 w.spawnParticles(ParticleTypes.HEART, p.getX(), p.getY() + 1.5, p.getZ(), 10, 0.4, 0.4, 0.4, 0.02);
                 sound(w, p, SoundEvents.ENTITY_PLAYER_LEVELUP, 1f);
             }
-            case RAGE -> {
-                p.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, 200, 1));
-                p.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 200, 1));
-                p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 200, 0));
-                w.spawnParticles(ParticleTypes.ANGRY_VILLAGER, p.getX(), p.getY() + 1.8, p.getZ(), 10, 0.4, 0.3, 0.4, 0.02);
-                sound(w, p, SoundEvents.ENTITY_RAVAGER_ROAR, 1f);
-            }
-            case VANISH -> {
-                p.addStatusEffect(new StatusEffectInstance(StatusEffects.INVISIBILITY, 160, 0));
-                p.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 160, 0));
-                poof(w, p.getPos());
-                sound(w, p, SoundEvents.ENTITY_ILLUSIONER_MIRROR_MOVE, 1f);
-            }
-            case SCREAM -> {
-                for (LivingEntity e : targets(p, 6)) {
-                    Vec3d dir = e.getPos().subtract(p.getPos()).normalize();
-                    e.damage(w.getDamageSources().playerAttack(p), 4f);
-                    e.addVelocity(dir.x * 1.2, 0.5, dir.z * 1.2);
-                    e.velocityModified = true;
-                }
-                w.spawnParticles(ParticleTypes.SONIC_BOOM, p.getX(), p.getY() + 1, p.getZ(), 1, 0, 0, 0, 0);
-                sound(w, p, SoundEvents.ENTITY_WARDEN_SONIC_BOOM, 1f);
-            }
-            case WITHER_GAZE -> {
-                for (LivingEntity e : targets(p, 10)) {
-                    if (inCone(p, e, 0.7)) {
-                        e.addStatusEffect(new StatusEffectInstance(StatusEffects.WITHER, 120, 1));
-                        w.spawnParticles(ParticleTypes.SMOKE, e.getX(), e.getY() + 1, e.getZ(), 20, 0.3, 0.6, 0.3, 0.02);
-                    }
-                }
-                sound(w, p, SoundEvents.ENTITY_WITHER_AMBIENT, 0.8f);
-            }
-            case STOMP -> {
-                for (LivingEntity e : targets(p, 5)) {
-                    e.damage(w.getDamageSources().playerAttack(p), 5f);
-                    e.addVelocity(0, 0.9, 0);
-                    e.velocityModified = true;
-                }
-                w.spawnParticles(ParticleTypes.EXPLOSION, p.getX(), p.getY() + 0.2, p.getZ(), 6, 1.5, 0.1, 1.5, 0.0);
-                w.spawnParticles(ParticleTypes.CLOUD, p.getX(), p.getY() + 0.2, p.getZ(), 40, 2.0, 0.1, 2.0, 0.1);
-                sound(w, p, SoundEvents.ENTITY_RAVAGER_ROAR, 0.6f);
-            }
-            case BARRIER -> {
-                p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 120, 3));
-                p.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 120, 2));
-                w.spawnParticles(ParticleTypes.END_ROD, p.getX(), p.getY() + 1, p.getZ(), 30, 0.5, 0.8, 0.5, 0.02);
-                sound(w, p, SoundEvents.ITEM_TOTEM_USE, 1.4f);
-            }
-            case VENOM -> {
-                for (LivingEntity e : targets(p, 10)) {
-                    if (inCone(p, e, 0.7)) {
-                        e.addStatusEffect(new StatusEffectInstance(StatusEffects.POISON, 140, 1));
-                        w.spawnParticles(ParticleTypes.WITCH, e.getX(), e.getY() + 1, e.getZ(), 15, 0.3, 0.6, 0.3, 0.02);
-                    }
-                }
-                sound(w, p, SoundEvents.ENTITY_SLIME_JUMP, 0.6f);
-            }
-            case PULL -> {
-                for (LivingEntity e : targets(p, 12)) {
-                    Vec3d dir = p.getPos().subtract(e.getPos()).normalize();
-                    e.addVelocity(dir.x * 1.3, 0.3, dir.z * 1.3);
-                    e.velocityModified = true;
-                    w.spawnParticles(ParticleTypes.CRIT, e.getX(), e.getY() + 1, e.getZ(), 10, 0.3, 0.5, 0.3, 0.1);
-                }
-                sound(w, p, SoundEvents.ENTITY_BAT_TAKEOFF, 0.7f);
-            }
-            case BLIND -> {
-                for (LivingEntity e : targets(p, 8)) {
-                    e.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, 100, 0));
-                }
-                w.spawnParticles(ParticleTypes.END_ROD, p.getX(), p.getY() + 1, p.getZ(), 40, 1.5, 0.8, 1.5, 0.05);
-                sound(w, p, SoundEvents.ENTITY_ILLUSIONER_MIRROR_MOVE, 1f);
-            }
-            case LEECH -> {
-                float healed = 0f;
-                for (LivingEntity e : targets(p, 8)) {
-                    if (inCone(p, e, 0.7)) {
-                        e.damage(w.getDamageSources().playerAttack(p), 4f);
-                        healed += 2f;
-                        w.spawnParticles(ParticleTypes.SOUL_FIRE_FLAME, e.getX(), e.getY() + 1, e.getZ(), 12, 0.3, 0.6, 0.3, 0.03);
-                    }
-                }
-                if (healed > 0f) p.heal(Math.min(healed, 8f));
-                sound(w, p, SoundEvents.ENTITY_WITHER_AMBIENT, 1.4f);
-            }
-            default -> { }
-        }
-    }
-
-    // ------------------------------------------------------------ helpers
-    private static List<LivingEntity> targets(ServerPlayerEntity p, double range) {
-        Box box = p.getBoundingBox().expand(range);
-        return p.getServerWorld().getEntitiesByClass(LivingEntity.class, box,
-                e -> e != p && e.isAlive()
-                        && (e instanceof Monster || (e instanceof PlayerEntity pl && !pl.isSpectator()))
-                        && e.squaredDistanceTo(p) <= range * range);
-    }
-
-    private static boolean inCone(ServerPlayerEntity p, LivingEntity e, double minDot) {
-        Vec3d to = e.getPos().add(0, e.getHeight() / 2, 0).subtract(p.getEyePos());
-        if (to.lengthSquared() < 1.0E-4) return true;
-        return to.normalize().dotProduct(p.getRotationVec(1f)) >= minDot;
-    }
-
-    private static void poof(ServerWorld w, Vec3d pos) {
-        w.spawnParticles(ParticleTypes.PORTAL, pos.x, pos.y + 1, pos.z, 30, 0.4, 0.8, 0.4, 0.2);
-    }
-
-    private static void sound(ServerWorld w, ServerPlayerEntity p, SoundEvent s, float pitch) {
-        w.playSound(null, p.getBlockPos(), s, SoundCategory.PLAYERS, 1f, pitch);
-    }
-
-    private RaceManager() {}
-                  }
+            
