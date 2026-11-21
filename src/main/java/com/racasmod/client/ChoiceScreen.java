@@ -267,7 +267,8 @@ public class ChoiceScreen extends Screen {
         }
 
         String sub = cur.ability == Ability.NONE ? "Sem habilidade ativa"
-                : "[R] " + cur.ability.title + " (" + cur.ability.cooldownSeconds + "s)";
+                : "[R] " + cur.ability.title + " (" + cur.ability.cooldownSeconds + "s)"
+                        + (cur.extra.isEmpty() ? "" : "  +" + cur.extra.size());
         if (cur.mimic) sub = "[M] Copiar poder  |  [R] Usar";
         c.drawText(textRenderer, Text.literal(sub), rx + 58, hy + 38, 0xFFFFE082, true);
 
@@ -294,9 +295,15 @@ public class ChoiceScreen extends Screen {
         c.enableScissor(rx, textTop, rx + rw, bottom);
         ty = block(c, cur.desc, rx + 4, ty, tw, 0xFFCFCFE0) + 4;
         if (cur.ability != Ability.NONE) {
-            c.drawText(textRenderer, Text.literal("Habilidade").formatted(Formatting.BOLD), rx + 4, ty, 0xFFFFD54F, true);
+            c.drawText(textRenderer, Text.literal(cur.extra.isEmpty() ? "Habilidade" : "Habilidades").formatted(Formatting.BOLD), rx + 4, ty, 0xFFFFD54F, true);
             ty += 11;
-            ty = block(c, cur.ability.title + " - " + cur.ability.desc, rx + 6, ty, tw - 4, 0xFFFFE082) + 4;
+            for (Ability ab : cur.abilities()) {
+                ty = block(c, ab.title + " (" + ab.cooldownSeconds + "s) - " + ab.desc, rx + 6, ty, tw - 4, 0xFFFFE082);
+            }
+            if (!cur.extra.isEmpty()) {
+                ty = block(c, "Agache + R troca a habilidade.", rx + 6, ty, tw - 4, 0xFF9E9E9E);
+            }
+            ty += 4;
         }
         if (!cur.perks.isEmpty()) {
             c.drawText(textRenderer, Text.literal("Vantagens").formatted(Formatting.BOLD), rx + 4, ty, 0xFF66BB6A, true);
@@ -392,4 +399,5 @@ public class ChoiceScreen extends Screen {
     @Override
     public boolean shouldPause() { return false; }
             }
-                   
+
+            
