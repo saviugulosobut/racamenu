@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "racas",
+  "version": "${version}",
+  "name": "Raças",
+  "description": "Escolha sua raça ao entrar no mundo: vampiro, Herobrine, lobisomem e mais de 30 outras, cada uma com poderes e fraquezas.",
+  "authors": ["Você"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.racasmod.RacasMod"],
+    "client": ["com.racasmod.client.RacasClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
