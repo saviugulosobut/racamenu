@@ -23,8 +23,18 @@ public final class Race {
     public final List<Fx> fxs = new ArrayList<>();
     public final List<Hurt> hurts = new ArrayList<>();
     public Ability ability = Ability.NONE;
+    /** Habilidades extras (Agache + R troca a habilidade selecionada). */
+    public final List<Ability> extra = new ArrayList<>();
     public float lifesteal, hunger;
     public boolean revive, mimic;
+    /** Chance (0 a 1) de desviar de qualquer dano. */
+    public float dodge;
+    /** Retorno pela Morte: ao reviver, volta para o último ponto salvo. */
+    public boolean checkpoint;
+    public int reviveTicks = 6000;
+    public float reviveHealth = 8f;
+    /** Item entregue ao escolher a raça. */
+    public Item giveItem;
 
     private Race(String id, String name, Item icon, int color, String desc) {
         this.id = id;
@@ -71,5 +81,20 @@ public final class Race {
     public Race lifesteal(float f) { this.lifesteal = f; return this; }
     public Race hunger(float f) { this.hunger = f; return this; }
     public Race revive() { this.revive = true; return this; }
+    public Race revive(int cooldownTicks, float healthAfter) {
+        this.revive = true; this.reviveTicks = cooldownTicks; this.reviveHealth = healthAfter; return this;
+    }
+    public Race also(Ability... more) { for (Ability a : more) extra.add(a); return this; }
+    public Race dodge(float chance) { this.dodge = chance; return this; }
+    public Race checkpoint() { this.checkpoint = true; return this; }
+    public Race give(Item item) { this.giveItem = item; return this; }
+
+    /** Todas as habilidades ativas da raça, na ordem. */
+    public List<Ability> abilities() {
+        List<Ability> out = new ArrayList<>();
+        if (ability != Ability.NONE) out.add(ability);
+        out.addAll(extra);
+        return out;
+    }
     public Race mimic() { this.mimic = true; return this; }
 }
