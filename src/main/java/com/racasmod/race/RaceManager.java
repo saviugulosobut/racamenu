@@ -91,7 +91,7 @@ public final class RaceManager {
     public static void chooseMimic(ServerPlayerEntity p, String id) {
         Race r = raceOf(p);
         Race m = Mimics.get(id);
-        if (r == null || !r.mimic || m == null) return;
+        if (r == null || !r.mimic || m == null || m.mimic) return;
         RaceState st = RaceState.get(p.server);
         st.mimics.put(p.getUuid(), m.id);
         st.markDirty();
@@ -173,7 +173,9 @@ public final class RaceManager {
     /** Fênix: volta da morte. Retorna true se reviveu. */
     public static boolean tryRevive(ServerPlayerEntity p) {
         Race r = raceOf(p);
-        if (r == null || !r.revive) return false;
+        if (r == null) return false;
+        Race m = mimicOf(p, r);
+        if (!r.revive && (m == null || !m.revive)) return false;
         ServerWorld w = p.getServerWorld();
         long now = w.getTime();
         Long ready = reviveCooldowns.get(p.getUuid());
@@ -340,6 +342,59 @@ public final class RaceManager {
                     }
                 }
                 sound(w, p, SoundEvents.ENTITY_WITHER_AMBIENT, 0.8f);
+            }
+            case STOMP -> {
+                for (LivingEntity e : targets(p, 5)) {
+                    e.damage(w.getDamageSources().playerAttack(p), 5f);
+                    e.addVelocity(0, 0.9, 0);
+                    e.velocityModified = true;
+                }
+                w.spawnParticles(ParticleTypes.EXPLOSION, p.getX(), p.getY() + 0.2, p.getZ(), 6, 1.5, 0.1, 1.5, 0.0);
+                w.spawnParticles(ParticleTypes.CLOUD, p.getX(), p.getY() + 0.2, p.getZ(), 40, 2.0, 0.1, 2.0, 0.1);
+                sound(w, p, SoundEvents.ENTITY_RAVAGER_ROAR, 0.6f);
+            }
+            case BARRIER -> {
+                p.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 120, 3));
+                p.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, 120, 2));
+                w.spawnParticles(ParticleTypes.END_ROD, p.getX(), p.getY() + 1, p.getZ(), 30, 0.5, 0.8, 0.5, 0.02);
+                sound(w, p, SoundEvents.ITEM_TOTEM_USE, 1.4f);
+            }
+            case VENOM -> {
+                for (LivingEntity e : targets(p, 10)) {
+                    if (inCone(p, e, 0.7)) {
+                        e.addStatusEffect(new StatusEffectInstance(StatusEffects.POISON, 140, 1));
+                        w.spawnParticles(ParticleTypes.WITCH, e.getX(), e.getY() + 1, e.getZ(), 15, 0.3, 0.6, 0.3, 0.02);
+                    }
+                }
+                sound(w, p, SoundEvents.ENTITY_SLIME_JUMP, 0.6f);
+            }
+            case PULL -> {
+                for (LivingEntity e : targets(p, 12)) {
+                    Vec3d dir = p.getPos().subtract(e.getPos()).normalize();
+                    e.addVelocity(dir.x * 1.3, 0.3, dir.z * 1.3);
+                    e.velocityModified = true;
+                    w.spawnParticles(ParticleTypes.CRIT, e.getX(), e.getY() + 1, e.getZ(), 10, 0.3, 0.5, 0.3, 0.1);
+                }
+                sound(w, p, SoundEvents.ENTITY_BAT_TAKEOFF, 0.7f);
+            }
+            case BLIND -> {
+                for (LivingEntity e : targets(p, 8)) {
+                    e.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS, 100, 0));
+                }
+                w.spawnParticles(ParticleTypes.END_ROD, p.getX(), p.getY() + 1, p.getZ(), 40, 1.5, 0.8, 1.5, 0.05);
+                sound(w, p, SoundEvents.ENTITY_ILLUSIONER_MIRROR_MOVE, 1f);
+            }
+            case LEECH -> {
+                float healed = 0f;
+                for (LivingEntity e : targets(p, 8)) {
+                    if (inCone(p, e, 0.7)) {
+                        e.damage(w.getDamageSources().playerAttack(p), 4f);
+                        healed += 2f;
+                        w.spawnParticles(ParticleTypes.SOUL_FIRE_FLAME, e.getX(), e.getY() + 1, e.getZ(), 12, 0.3, 0.6, 0.3, 0.03);
+                    }
+                }
+                if (healed > 0f) p.heal(Math.min(healed, 8f));
+                sound(w, p, SoundEvents.ENTITY_WITHER_AMBIENT, 1.4f);
             }
             default -> { }
         }
