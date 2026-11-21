@@ -10,14 +10,27 @@ import java.util.List;
 import java.util.Map;
 import net.minecraft.item.Items;
 
-/** Poderes de mobs que o Herobrine pode copiar. */
+/** Poderes de mobs que o Herobrine pode copiar (além de todas as raças). */
 public final class Mimics {
     private static final Map<String, Race> MAP = new LinkedHashMap<>();
 
     private static void add(Race r) { MAP.put(r.id, r); }
 
-    public static Race get(String id) { ensure(); return id == null ? null : MAP.get(id); }
-    public static List<Race> all() { ensure(); return new ArrayList<>(MAP.values()); }
+    /** Procura primeiro nos mobs e depois em todas as raças (Herobrine copia qualquer uma). */
+    public static Race get(String id) {
+        ensure();
+        if (id == null) return null;
+        Race r = MAP.get(id);
+        return r != null ? r : Races.get(id);
+    }
+
+    /** Lista tudo que o Herobrine pode copiar: mobs + todas as raças (menos ele mesmo). */
+    public static List<Race> all() {
+        ensure();
+        List<Race> out = new ArrayList<>(MAP.values());
+        for (Race r : Races.all()) if (!r.mimic) out.add(r);
+        return out;
+    }
 
     private static void ensure() {
         if (!MAP.isEmpty()) return;
