@@ -33,6 +33,7 @@ public class RacasMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        ModItems.init();
         Races.all(); // garante que tudo carrega
 
         // ---- pacotes
@@ -64,11 +65,15 @@ public class RacasMod implements ModInitializer {
             RaceManager.applyAttributes(p);
             if (RaceManager.raceOf(p) == null) pendingMenu.put(p.getUuid(), 40);
         });
-        ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> RaceManager.applyAttributes(newPlayer));
+        ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
+            RaceManager.applyAttributes(newPlayer);
+            RaceManager.giveStarterItem(newPlayer);
+        });
 
         // ---- tick
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             int t = server.getTicks();
+            RaceManager.runTasks();
             for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
                 RaceManager.tick(p, t);
                 Integer left = pendingMenu.get(p.getUuid());
@@ -89,6 +94,7 @@ public class RacasMod implements ModInitializer {
                 RaceManager.onDamageDealt(entity, attacker, damageTaken);
             }
         });
+        ServerLivingEntityEvents.ALLOW_DAMAGE.register(RaceManager::allowDamage);
         ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
             if (entity instanceof ServerPlayerEntity p && RaceManager.tryRevive(p)) return false;
             return true;
@@ -117,4 +123,4 @@ public class RacasMod implements ModInitializer {
                                     return 1;
                                 })))));
     }
-  }
+}
