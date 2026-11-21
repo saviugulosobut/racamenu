@@ -276,85 +276,9 @@ public final class Races {
                 .flaw("Brilha: todo mundo te vê de longe")
                 .flaw("Fome mais rápida (os fãs cobram)"));
 
-        // ---------- Pacote 2: +20 raças ----------
-        add(Race.of("samurai", "Samurai", Items.DIAMOND_SWORD, 0xC62828,
-                "Honra acima de tudo. Lâmina rápida, corpo disciplinado.")
-                .dmg(2).speed(0.1).hp(-2).fx(LOW_HP, STRENGTH, 1).fx(LOW_HP, RESISTANCE, 0).ability(DASH)
-                .perk("+2 de dano e 10% mais rápido")
-                .perk("Com pouca vida: Força II e Resistência")
-                .perk("Dash cortante (R)")
-                .flaw("-1 coração"));
+        MoreRaces.register(Races::add); // +20 raças (arquivo MoreRaces.java)
+    }
 
-        add(Race.of("pirate", "Pirata", Items.SPYGLASS, 0x6D4C41,
-                "Senhor dos mares e dos ganchos.")
-                .luck(2).dmg(1).fx(IN_WATER, DOLPHINS_GRACE, 0).fx(IN_WATER, STRENGTH, 0).fx(UNDERGROUND, SLOWNESS, 0).ability(PULL)
-                .perk("Gancho puxa os inimigos até você (R)")
-                .perk("Na água: nada rápido e ganha Força")
-                .perk("+1 de dano e sorte")
-                .flaw("Em cavernas: Lentidão (saudade do mar)"));
-
-        add(Race.of("cyborg", "Ciborgue", Items.OBSERVER, 0x00B0FF,
-                "Metade homem, metade máquina, 100% descarga elétrica.")
-                .armor(4).dmg(1).speed(0.05).hp(2).hurt(WET, 1.0f).fx(NIGHT, NIGHT_VISION, 0).ability(SHOCK)
-                .perk("+4 de armadura, +1 coração e +1 de dano")
-                .perk("Visão noturna à noite")
-                .perk("Descarga elétrica onde você olha (R)")
-                .flaw("Curto-circuito: água e chuva machucam"));
-
-        add(Race.of("alien", "Alienígena", Items.AMETHYST_SHARD, 0x69F0AE,
-                "Veio de outro mundo. Pula como ninguém e cega quem chega perto.")
-                .scale(-0.1).jump(0.5).fall(-1).hp(-2).hunger(0.2f).fx(NIGHT, NIGHT_VISION, 0).fx(NIGHT, SPEED, 0).ability(BLIND)
-                .perk("Pulo enorme e zero dano de queda")
-                .perk("À noite: visão noturna e Velocidade")
-                .perk("Clarão cega os inimigos por perto (R)")
-                .flaw("-1 coração")
-                .flaw("Fome mais rápida"));
-
-        add(Race.of("titan", "Titã", Items.OBSIDIAN, 0x5D4037,
-                "Uma montanha que anda. Cada passo faz o chão tremer.")
-                .scale(0.5).hp(16).dmg(3).armor(2).kb(0.6).speed(-0.15).hunger(0.5f).ability(STOMP)
-                .perk("+8 corações, +3 de dano e +2 de armadura")
-                .perk("Pisão arremessa os inimigos pro alto (R)")
-                .flaw("15% mais lento")
-                .flaw("Fome gigante"));
-
-        add(Race.of("assassin", "Assassino", Items.NETHERITE_SWORD, 0x78909C,
-                "Um golpe, um silêncio.")
-                .dmg(3).hp(-6).speed(0.12).fx(SNEAK, INVISIBILITY, 0).fx(NIGHT, STRENGTH, 0).fx(SUNLIT, WEAKNESS, 0).ability(VANISH)
-                .perk("+3 de dano e 12% mais rápido")
-                .perk("Agachado: invisível; à noite: Força")
-                .perk("Sumiço (R)")
-                .flaw("Frágil: -3 corações")
-                .flaw("Ao sol: Fraqueza"));
-
-        add(Race.of("paladin", "Paladino", Items.GOLDEN_SWORD, 0xFFD54F,
-                "Guerreiro da luz. Brilha sob o sol e protege os aliados.")
-                .armor(4).hp(4).dmg(1).speed(-0.05).hunger(0.2f).fx(SUNLIT, REGENERATION, 0).fx(SUNLIT, STRENGTH, 0)
-                .fx(UNDERGROUND, WEAKNESS, 0).ability(BARRIER)
-                .perk("+2 corações, +4 de armadura e +1 de dano")
-                .perk("Ao sol: Regeneração e Força")
-                .perk("Barreira sagrada (R)")
-                .flaw("5% mais lento")
-                .flaw("Em cavernas: Fraqueza")
-                .flaw("Fome mais rápida"));
-
-        add(Race.of("nomad", "Nômade do Deserto", Items.CACTUS, 0xFFB74D,
-                "Filho das dunas. Rápido no calor, perdido no frio.")
-                .speed(0.1).hp(2).fx(HOT, SPEED, 1).fx(HOT, RESISTANCE, 0).fx(COLD, SLOWNESS, 1).fx(COLD, WEAKNESS, 0).ability(DASH)
-                .perk("No calor (deserto/Nether): Velocidade II e Resistência")
-                .perk("+1 coração e 10% mais rápido")
-                .perk("Dash (R)")
-                .flaw("No frio: Lentidão II e Fraqueza"));
-
-        add(Race.of("scorpion", "Escorpião", Items.FERMENTED_SPIDER_EYE, 0xBF360C,
-                "Casca dura, ferrão letal.")
-                .dmg(1).hp(-2).armor(2).step(0.3).fx(HOT, STRENGTH, 0).fx(WET, SLOWNESS, 0).ability(VENOM)
-                .perk("+2 de armadura e sobe blocos")
-                .perk("No calor: Força")
-                .perk("Veneno em cone (R)")
-                .flaw("-1 coração")
-                .flaw("Na água/chuva: Lentidão"));
-
-        add(Race.of("banshee", "Banshee", Items.SOUL_LANTERN, 0x80DEEA,
-                "Seu grito arrepia até os mortos.")
-                .hp(-4).speed(0.15).fall(-0.5).fx(NIGHT, SPEED, 1).fx(NIGHT, NIGHT_VISION, 0).fx(SUNLIT, WEAKNESS, 1).ability(S
+    private Races() {}
+            }
+            
