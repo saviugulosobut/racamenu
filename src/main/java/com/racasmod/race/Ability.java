@@ -14,7 +14,13 @@ public enum Ability {
     RAGE("Fúria", "Força, Velocidade e Resistência por 10s.", 25),
     VANISH("Sumiço", "Fica invisível e rápido por 8s.", 20),
     SCREAM("Grito", "Empurra e fere os inimigos por perto.", 12),
-    WITHER_GAZE("Olhar Sombrio", "Aplica Wither nos inimigos à frente.", 15);
+    WITHER_GAZE("Olhar Sombrio", "Aplica Wither nos inimigos à frente.", 15),
+    STOMP("Pisão", "Esmaga o chão: fere e lança os inimigos pro alto.", 14),
+    BARRIER("Barreira", "Escudo de Resistência e Absorção por 6s.", 18),
+    VENOM("Veneno", "Envenena os inimigos à sua frente.", 12),
+    PULL("Gancho", "Puxa os inimigos próximos até você.", 10),
+    BLIND("Clarão", "Cega os inimigos por perto.", 16),
+    LEECH("Drenar Vida", "Suga a vida dos inimigos à frente e cura você.", 14);
 
     public final String title;
     public final String desc;
